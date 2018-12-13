@@ -1,74 +1,8 @@
 # http://www.chimica.unipd.it/antonino.polimeno/pubblica/downloads/JChemPhys_101_4062.pdf
 
-function initialize!(integrator,cache::SymplecticEulerConstantCache)
-  integrator.kshortsize = 2
-  integrator.k = typeof(integrator.k)(undef, integrator.kshortsize)
-  # Do the calculation pre
-  # So that way FSAL interpolation
-  duprev,uprev = integrator.uprev.x
-  du,u = integrator.u.x
-  kduprev = integrator.f.f1(duprev,uprev,integrator.p,integrator.t)
-  kdu = integrator.f.f1(duprev,uprev,integrator.p,integrator.t)
-  @muladd du = duprev + integrator.dt*kdu
-  ku = integrator.f.f2(du,uprev,integrator.p,integrator.t)
-  integrator.fsalfirst = ArrayPartition((kduprev,ku))
-  integrator.fsallast = ArrayPartition((kdu,zero(ku)))
-end
-
-@muladd function perform_step!(integrator,cache::SymplecticEulerConstantCache,repeat_step=false)
-  @unpack t,dt,f,p = integrator
-  duprev,uprev = integrator.uprev.x
-  kuprev = integrator.fsalfirst.x[2]
-  # Now actually compute the step
-  # Do it at the end for interpolations!
-  kdu = f.f1(duprev,uprev,p,t)
-  du = duprev + dt*kdu
-  u = uprev + dt*du
-  ku = f.f2(du,uprev,p,t)
-  integrator.u = ArrayPartition((du,u))
-  integrator.fsallast = ArrayPartition((kdu,ku))
-  integrator.k[1] = integrator.fsalfirst
-  integrator.k[2] = integrator.fsallast
-end
-
-function initialize!(integrator,cache::SymplecticEulerCache)
-  integrator.kshortsize = 2
-  @unpack k,fsalfirst = cache
-  integrator.fsalfirst = fsalfirst
-  integrator.fsallast = k
-  resize!(integrator.k, integrator.kshortsize)
-  integrator.k[1] = integrator.fsalfirst
-  integrator.k[2] = integrator.fsallast
-  # Do the calculation pre
-  # So that way FSAL interpolation
-  duprev,uprev = integrator.uprev.x
-  du,u = integrator.u.x
-  kdu = integrator.k[1].x[1]
-  ku = integrator.k[2].x[2]
-  integrator.f.f1(kdu,duprev,uprev,integrator.p,integrator.t)
-  @muladd @. du = duprev + integrator.dt*kdu
-  integrator.f.f2(ku,du,uprev,integrator.p,integrator.t)
-  integrator.f.f1(integrator.k[1].x[1],duprev,uprev,integrator.p,integrator.t)
-end
-
-@muladd function perform_step!(integrator,cache::SymplecticEulerCache,repeat_step=false)
-  @unpack t,dt,f,p = integrator
-  duprev,uprev = integrator.uprev.x
-  du,u = integrator.u.x
-  kduprev = integrator.k[1].x[1]
-  kdu = integrator.k[2].x[1]
-  ku  = integrator.k[2].x[2]
-  # Now actually compute the step
-  # Do it at the end for interpolations!
-  f.f1(kdu,duprev,uprev,p,t)
-  @. du = duprev + dt*kduprev
-  @. u = uprev + dt*du
-  f.f2(ku,du,uprev,p,t)
-end
-
 function initialize!(integrator,cache::C) where
-    {C<:Union{VelocityVerletCache,Symplectic2Cache,Symplectic3Cache,Symplectic4Cache,
-              Symplectic45Cache,Symplectic5Cache,Symplectic6Cache,Symplectic62Cache,
+    {C<:Union{SymplecticEulerCache, VelocityVerletCache,Symplectic2Cache,Symplectic3Cache,
+              Symplectic4Cache,Symplectic45Cache,Symplectic5Cache,Symplectic6Cache,Symplectic62Cache,
               McAte8Cache,KahanLi8Cache,SofSpa10Cache}}
   integrator.fsalfirst = cache.fsalfirst
   integrator.fsallast = cache.k
@@ -84,7 +18,7 @@ function initialize!(integrator,cache::C) where
 end
 
 function initialize!(integrator,cache::C) where
-    {C<:Union{VelocityVerletConstantCache,Symplectic2ConstantCache,
+    {C<:Union{SymplecticEulerConstantCache, VelocityVerletConstantCache,Symplectic2ConstantCache,
               Symplectic3ConstantCache,Symplectic4ConstantCache,
               Symplectic45ConstantCache,Symplectic5ConstantCache,
               Symplectic6ConstantCache,Symplectic62ConstantCache,
@@ -96,6 +30,34 @@ function initialize!(integrator,cache::C) where
   kdu  = integrator.f.f1(duprev,uprev,integrator.p,integrator.t)
   ku = integrator.f.f2(duprev,uprev,integrator.p,integrator.t)
   integrator.fsalfirst = ArrayPartition((kdu,ku))
+end
+
+@muladd function perform_step!(integrator,cache::SymplecticEulerConstantCache,repeat_step=false)
+  @unpack t,dt,f,p = integrator
+  duprev,uprev = integrator.uprev.x
+  # update velocity
+  kdu = f.f1(duprev,uprev,p,t)
+  du = duprev + dt*kdu
+  # update position
+  u = uprev + dt*du
+  ku = f.f2(du,u,p,t+dt)
+  integrator.u = ArrayPartition((du,u))
+  integrator.fsallast = ArrayPartition((kdu,du))
+  integrator.k[1] = integrator.fsalfirst
+  integrator.k[2] = integrator.fsallast
+end
+
+@muladd function perform_step!(integrator,cache::SymplecticEulerCache,repeat_step=false)
+  @unpack t,dt,f,p = integrator
+  duprev,uprev = integrator.uprev.x
+  du,u = integrator.u.x
+  kdu, ku = integrator.k[2]
+  # update velocity
+  f.f1(kdu,duprev,uprev,p,t)
+  @. du = duprev + dt*kdu
+  # update position
+  @. u = uprev + dt*du
+  f.f2(ku,du,u,p,t+dt)
 end
 
 @muladd function perform_step!(integrator,cache::VelocityVerletConstantCache,repeat_step=false)

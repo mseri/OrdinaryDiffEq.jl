@@ -40,7 +40,7 @@ end
   du = duprev + dt*kdu
   # update position
   u = uprev + dt*du
-  ku = f.f2(du,u,p,t+dt)
+  ku = f.f2(du,u,p,t)
   integrator.u = ArrayPartition((du,u))
   integrator.fsallast = ArrayPartition((kdu,du))
   integrator.k[1] = integrator.fsalfirst
@@ -57,7 +57,7 @@ end
   @. du = duprev + dt*kdu
   # update position
   @. u = uprev + dt*du
-  f.f2(ku,du,u,p,t+dt)
+  f.f2(ku,du,u,p,t)
 end
 
 @muladd function perform_step!(integrator,cache::VelocityVerletConstantCache,repeat_step=false)

@@ -19,13 +19,12 @@ end
   @unpack t,dt,f,p = integrator
   duprev,uprev = integrator.uprev.x
   kuprev = integrator.fsalfirst.x[2]
-  u = uprev + dt*kuprev
   # Now actually compute the step
   # Do it at the end for interpolations!
   kdu = f.f1(duprev,uprev,p,t)
   du = duprev + dt*kdu
+  u = uprev + dt*du
   ku = f.f2(du,uprev,p,t)
-
   integrator.u = ArrayPartition((du,u))
   integrator.fsallast = ArrayPartition((kdu,ku))
   integrator.k[1] = integrator.fsalfirst
@@ -56,14 +55,14 @@ end
   @unpack t,dt,f,p = integrator
   duprev,uprev = integrator.uprev.x
   du,u = integrator.u.x
-  kuprev = integrator.k[1].x[2]
+  kduprev = integrator.k[1].x[1]
   kdu = integrator.k[2].x[1]
   ku  = integrator.k[2].x[2]
-  @. u = uprev + dt*kuprev
   # Now actually compute the step
   # Do it at the end for interpolations!
   f.f1(kdu,duprev,uprev,p,t)
-  @. du = duprev + dt*kdu
+  @. du = duprev + dt*kduprev
+  @. u = uprev + dt*du
   f.f2(ku,du,uprev,p,t)
 end
 
